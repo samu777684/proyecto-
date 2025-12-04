@@ -1,22 +1,19 @@
-// db.js  ← Reemplaza todo el archivo con esto
-import mysql from 'mysql2';
-import dotenv from 'dotenv';
+// db.js
+import pkg from "pg";
+import dotenv from "dotenv";
 
 dotenv.config();
 
-const pool = mysql.createPool({
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASS || '',
-  database: process.env.DB_NAME || 'consultorio_medico',
-  port: process.env.DB_PORT || 3306,
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0
+const { Pool } = pkg;
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,  // URL completa del Session Pooler
+  ssl: { rejectUnauthorized: false }           // Necesario para Supabase
 });
 
-// ¡¡ESTA LÍNEA ES LA CLAVE!!
-// Convertimos el pool normal en uno que soporte promesas
-const promisePool = pool.promise();
+// Probar conexión
+pool.connect()
+  .then(() => console.log("✅ Conectado a PostgreSQL Supabase"))
+  .catch(err => console.error("❌ Error al conectar a Supabase:", err));
 
-export default promisePool;
+export default pool;
