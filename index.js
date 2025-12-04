@@ -4,25 +4,29 @@ import cors from 'cors';
 import jwt from 'jsonwebtoken';
 import pool from './db/db.js';
 import authRouter from './routes/auth.js';
-import adminRouter from './routes/admin.js';     // ← Importamos como ES Module
-import citasRouter from './routes/citas.js';     // ← (opcional, si ya lo tienes)
+import adminRouter from './routes/admin.js';
+import citasRouter from './routes/citas.js';
 
 import dotenv from 'dotenv';
-dotenv.config(); // ← Muy importante para leer .env
+dotenv.config();
 
 const app = express();
 
-// Middlewares
+// CORS CORREGIDO PARA LOCAL + PRODUCCIÓN
 app.use(cors({
-  origin: 'http://localhost:5173', // Cambia si tu frontend está en otro puerto
+  origin: [
+    'http://localhost:5173',                    // Desarrollo local
+    'https://proyecto-frontend-t7fk.vercel.app' // Producción (tu frontend en Vercel)
+  ],
   credentials: true
 }));
+
 app.use(express.json());
 
 // Rutas
 app.use('/api/auth', authRouter);
-app.use('/api/admin', adminRouter);        // ← Ahora sí funciona
-app.use('/api/citas', citasRouter);        // ← Si ya tienes esta ruta
+app.use('/api/admin', adminRouter);
+app.use('/api/citas', citasRouter);
 
 // Middleware de verificación de token
 const verifyToken = (req, res, next) => {
@@ -40,7 +44,7 @@ const verifyToken = (req, res, next) => {
   }
 };
 
-// Ruta /api/me (usada por tu frontend para saber quién está logueado)
+// Ruta /api/me
 app.get('/api/me', verifyToken, async (req, res) => {
   try {
     const [rows] = await pool.query(
@@ -55,19 +59,23 @@ app.get('/api/me', verifyToken, async (req, res) => {
   }
 });
 
+// Ruta de prueba de base de datos
 app.get("/test-db", async (req, res) => {
   try {
-    const result = await pool.query("SELECT NOW()");
-    res.json(result.rows);
-  } catch (err) {
+    const [rows] = await pool.query("SELECT NOW()");
+    res.json({ success: true, time: rows[0] });
+  } catch (err)16n {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Ruta de prueba
-app.get('/', (req, res) => res.send('Backend del consultorio médico funcionando'));
+// Ruta raíz
+app.get('/', (req, res) => {
+  res.send('Backend del consultorio médico funcionando correctamente');
+});
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-  console.log(`Servidor corriendo en http://localhost:${PORT}`);
+  console.log(`Servidor corriendo en el puerto ${PORT}`);
+  console.log(`URL: https://proyecto-production-fc30.up.railway.app`);
 });
