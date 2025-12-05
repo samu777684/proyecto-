@@ -1,86 +1,65 @@
-// routes/auth.js - VERSIÓN CORREGIDA Y DEPURADA
+// routes/auth.js → VERSIÓN PRODUCCIÓN 2025
 import express from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import pool from '../db/db.js';
-import dotenv from 'dotenv';
-
-dotenv.config();
 
 const router = express.Router();
+const JWT_SECRET = process.env.JWT_SECRET || 'cambia-esta-clave-secreta-en-render-ya-mismo-123456789';
 
-// ==================== LOGIN - VERSIÓN MEJORADA ====================
-router.post('/login', async (req, res) => {
-  console.log('📨 Login request received:', req.body);
-  
+// ==================== CREAR ADMIN AUTOMÁTICO (solo la primera vez) ====================
+async function ensureAdminExists() {
   try {
-    let { email, password, username } = req.body;
+    const [rows] = await pool.query('SELECT id FROM users WHERE username = ?', ['admin']);
+    if (rows.length === 0) {
+      const hashed = await bcrypt.hash('Admin2025!', 12);
+      await pool.query(
+        'INSERT INTO users (username, email, password, fullName, role) VALUES (?, ?, ?, ?, ?)',
+        ['admin', 'admin@consultorio.com', hashed, 'Administrador', 'admin']
+      );
+      console.log('Admin creado automáticamente: usuario=admin | contraseña=Admin2025!');
+    }
+  } catch (err) {
+    console.error('Error creando admin:', err);
+  }
+}
+ensureAdminExists(); // Se ejecuta al iniciar el server
 
-    // Aceptar tanto email como username
-    const userIdentifier = email || username;
-    
-    if (!userIdentifier || !password) {
-      console.log('❌ Missing credentials');
-      return res.status(400).json({ 
-        success: false,
-        message: 'Faltan credenciales' 
-      });
+// ==================== LOGIN ====================
+router.post('/login', async (req, res) => {
+  try {
+    const { identifier, password } = req.body; // ahora solo un campo: identifier (email o username)
+
+    if (!identifier || !password) {
+      return res.status(400).json({ success: false, message: 'Faltan credenciales' });
     }
 
-    userIdentifier = userIdentifier.trim().toLowerCase();
-    password = password.trim();
+    const id = identifier.trim().toLowerCase();
 
-    console.log(`🔍 Searching user: ${userIdentifier}`);
-    
-    // Buscar usuario por email o username
     const [rows] = await pool.query(
       `SELECT id, username, password, fullName, email, role 
        FROM users 
-       WHERE username = ? OR email = ?`,
-      [userIdentifier, userIdentifier]
+       WHERE LOWER(username) = ? OR LOWER(email) = ?`,
+      [id, id]
     );
 
-    console.log(`📊 Users found: ${rows.length}`);
-
     if (rows.length === 0) {
-      console.log('❌ User not found');
-      return res.status(400).json({ 
-        success: false,
-        message: 'Usuario no encontrado' 
-      });
+      return res.status(400).json({ success: false, message: 'Usuario no encontrado' });
     }
 
     const user = rows[0];
-    console.log(`✅ User found: ${user.username} (${user.role})`);
+    const isMatch = await bcrypt.compare(password.trim(), user.password);
 
-    // Verificar contraseña
-    const isMatch = await bcrypt.compare(password, user.password);
-    
     if (!isMatch) {
-      console.log('❌ Password mismatch');
-      return res.status(400).json({ 
-        success: false,
-        message: 'Contraseña incorrecta' 
-      });
+      return res.status(400).json({ success: false, message: 'Contraseña incorrecta' });
     }
 
-    console.log('✅ Password verified');
-
-    // Crear token JWT
     const token = jwt.sign(
-      { 
-        id: user.id, 
-        role: user.role, 
-        username: user.username,
-        email: user.email
-      },
-      process.env.JWT_SECRET || 'secreto_temporal_para_desarrollo',
-      { expiresIn: '24h' }
+      { id: user.id, username: user.username, role: user.role },
+      JWT_SECRET,
+      { expiresIn: '12h' }
     );
 
-    console.log('✅ Token generated successfully');
-
-    // Respuesta exitosa
     res.json({
       success: true,
       token,
@@ -89,148 +68,71 @@ router.post('/login', async (req, res) => {
         username: user.username,
         fullName: user.fullName,
         email: user.email,
-        role: user.role
+        role: user.role,
       },
-      message: 'Login exitoso'
     });
-
   } catch (err) {
-    console.error('🔥 ERROR EN LOGIN:', err);
-    console.error('Error stack:', err.stack);
-    
-    res.status(500).json({ 
-      success: false,
-      message: 'Error interno del servidor',
-      error: process.env.NODE_ENV === 'development' ? err.message : undefined
-    });
+    console.error('Error login:', err);
+    res.status(500).json({ success: false, message: 'Error del servidor' });
   }
 });
 
-// ==================== REGISTRO - VERSIÓN MEJORADA ====================
+// ==================== REGISTRO (solo pacientes) ====================
 router.post('/register', async (req, res) => {
-  console.log('📨 Register request:', req.body);
-  
   try {
-    let { username, email, password, fullName } = req.body;
+    const { username, email, password, fullName } = req.body;
 
     if (!username || !email || !password || !fullName) {
-      return res.status(400).json({ 
-        success: false,
-        message: 'Todos los campos son obligatorios' 
-      });
+      return res.status(400).json({ success: false, message: 'Todos los campos son obligatorios' });
     }
-
-    username = username.trim().toLowerCase();
-    email = email.trim().toLowerCase();
-    password = password.trim();
-    fullName = fullName.trim();
 
     if (password.length < 6) {
-      return res.status(400).json({ 
-        success: false,
-        message: 'La contraseña debe tener al menos 6 caracteres' 
-      });
+      return res.status(400).json({ success: false, message: 'Mínimo 6 caracteres' });
     }
 
-    // Verificar si ya existe
-    const [existing] = await pool.query(
+    const [exists] = await pool.query(
       'SELECT id FROM users WHERE username = ? OR email = ?',
-      [username, email]
+      [username.trim().toLowerCase(), email.trim().toLowerCase()]
     );
 
-    if (existing.length > 0) {
-      return res.status(400).json({ 
-        success: false,
-        message: 'El usuario o email ya está registrado' 
-      });
+    if (exists.length > 0) {
+      return res.status(400).json({ success: false, message: 'Usuario o email ya existe' });
     }
 
-    // Encriptar contraseña
-    const hashedPassword = await bcrypt.hash(password, 12);
+    const hashed = await bcrypt.hash(password, 12);
 
-    // Insertar nuevo usuario
     const [result] = await pool.query(
       'INSERT INTO users (username, email, password, fullName, role) VALUES (?, ?, ?, ?, ?)',
-      [username, email, hashedPassword, fullName, 'paciente'] // Cambié 'user' por 'paciente' para tu sistema
+      [username.trim().toLowerCase(), email.trim().toLowerCase(), hashed, fullName.trim(), 'paciente']
     );
-
-    console.log(`✅ User registered: ${username} (ID: ${result.insertId})`);
 
     res.status(201).json({
       success: true,
-      message: '¡Cuenta creada exitosamente!',
-      userId: result.insertId
+      message: '¡Registro exitoso!',
+      userId: result.insertId,
     });
-
   } catch (err) {
-    console.error('🔥 ERROR EN REGISTRO:', err);
-    res.status(500).json({ 
-      success: false,
-      message: 'Error al crear la cuenta',
-      error: process.env.NODE_ENV === 'development' ? err.message : undefined
-    });
+    console.error('Error registro:', err);
+    res.status(500).json({ success: false, message: 'Error del servidor' });
   }
 });
 
 // ==================== VERIFICAR TOKEN ====================
-router.post('/verify', async (req, res) => {
+router.get('/verify', (req, res) => {
   try {
-    const token = req.header('Authorization')?.replace('Bearer ', '');
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) return res.status(401).json({ success: false, message: 'No autorizado' });
 
-    if (!token) {
-      return res.status(401).json({ 
-        success: false,
-        message: 'No hay token' 
-      });
-    }
-
-    const decoded = jwt.verify(
-      token, 
-      process.env.JWT_SECRET || 'secreto_temporal_para_desarrollo'
-    );
-
-    // Verificar que el usuario aún existe
-    const [rows] = await pool.query(
-      'SELECT id, username, fullName, email, role FROM users WHERE id = ?',
-      [decoded.id]
-    );
-
-    if (rows.length === 0) {
-      return res.status(401).json({ 
-        success: false,
-        message: 'Usuario no encontrado' 
-      });
-    }
-
-    const user = rows[0];
-
-    res.json({
-      success: true,
-      user: {
-        id: user.id,
-        username: user.username,
-        fullName: user.fullName,
-        email: user.email,
-        role: user.role
-      }
-    });
-
+    const decoded = jwt.verify(token, JWT_SECRET);
+    res.json({ success: true, user: decoded });
   } catch (err) {
-    console.error('Token verification error:', err);
-    res.status(401).json({ 
-      success: false,
-      message: 'Token inválido o expirado' 
-    });
+    res.status(401).json({ success: false, message: 'Token inválido' });
   }
 });
 
-// ==================== RUTA DE PRUEBA ====================
-router.get('/test', (req, res) => {
-  res.json({
-    success: true,
-    message: 'Auth routes working!',
-    timestamp: new Date().toISOString()
-  });
+// ==================== RUTA DE SALUD (para UptimeRobot) ====================
+router.get('/health', (req, res) => {
+  res.json({ success: true, uptime: process.uptime(), time: new Date().toISOString() });
 });
 
 export default router;
