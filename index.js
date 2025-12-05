@@ -12,25 +12,31 @@ dotenv.config();
 
 const app = express();
 
-// CORS permitido para desarrollo y producción
+// CORS 100% CORREGIDO (esto es lo que fallaba)
 app.use(
   cors({
     origin: [
       'http://localhost:5173',
-      'https://proyecto-frontend-t7fk.vercel.app',
+      'https://proyecto-frontend-t7fk.vercel.app'
     ],
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],  // ← FALTABA OPTIONS
+    allowedHeaders: ['Content-Type', 'Authorization']      // ← importante
   })
 );
 
-app.use(express.json());
+// Esto es CRUCIAL para que no dé Network Error en POST
+app.options('*', cors()); // responde automáticamente a los preflight
 
-// Rutas de la API
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true })); // por si acaso
+
+// Rutas
 app.use('/api/auth', authRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/citas', citasRouter);
 
-// Middleware para verificar token
+// Verificar token
 const verifyToken = (req, res, next) => {
   const authHeader = req.headers.authorization;
 
@@ -49,18 +55,14 @@ const verifyToken = (req, res, next) => {
   }
 };
 
-// Ruta para obtener datos del usuario logueado
+// Ruta /api/me
 app.get('/api/me', verifyToken, async (req, res) => {
   try {
     const [rows] = await pool.query(
       'SELECT id, username, email, fullName, role FROM users WHERE id = ?',
       [req.user.id]
     );
-
-    if (rows.length === 0) {
-      return res.status(404).json({ msg: 'Usuario no encontrado' });
-    }
-
+    if (rows.length === 0) return res.status(404).json({ msg: 'Usuario no encontrado' });
     res.json(rows[0]);
   } catch (err) {
     console.error(err);
@@ -68,24 +70,23 @@ app.get('/api/me', verifyToken, async (req, res) => {
   }
 });
 
-// Ruta de prueba para la base de datos
+// Ruta raíz (para despertar el servidor)
+app.get('/', (req, res) => {
+  res.send('Backend del consultorio médico funcionando correctamente');
+});
+
 app.get('/test-db', async (req, res) => {
   try {
     const [rows] = await pool.query('SELECT NOW()');
-    res.json({ success: true, time: rows[0]['NOW()'] || rows[0].now });
+    res.json({ success: true, time: rows[0] });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
-});
-
-// Ruta raíz
-app.get('/', (req, res) => {
-  res.send('Backend del consultorio médico funcionando correctamente');
 });
 
 // Puerto
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`Servidor corriendo en el puerto ${PORT}`);
-  console.log(`postgresql://postgres:[YOUR_PASSWORD]@db.ugzwaouztyzohpkfercj.supabase.co:5432/postgres`);
+  console.log(`URL: https://proyecto-2-yy3f.onrender.com`);
 });
