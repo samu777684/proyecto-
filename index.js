@@ -1,4 +1,4 @@
-// server.js o app.js - VERSIÓN FINAL PARA DESPLIEGUE
+// server.js o app.js - VERSIÓN FINAL PARA DESPLIEGUE CON MYSQL
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -64,12 +64,34 @@ app.use('/api/admin', adminRoutes);
 // ==================== RUTA DE PRUEBA ====================
 app.get('/', (req, res) => {
   res.json({
-    message: 'API del Sistema de Citas Médicas',
+    message: 'API del Sistema de Citas Médicas con MySQL',
     status: 'online',
     timestamp: new Date().toISOString(),
     version: '1.0.0',
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
+    database: 'MySQL'
   });
+});
+
+// ==================== RUTA DE PRUEBA DE CONEXIÓN A BD ====================
+app.get('/api/test-db', async (req, res) => {
+  try {
+    const pool = await import('./db/db.js').then(module => module.default);
+    const [result] = await pool.query('SELECT 1 + 1 AS solution');
+    
+    res.json({
+      success: true,
+      message: 'Conexión a MySQL exitosa',
+      data: result[0]
+    });
+  } catch (error) {
+    console.error('Error en prueba de BD:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al conectar con MySQL',
+      error: error.message
+    });
+  }
 });
 
 // ==================== MANEJO DE ERRORES 404 ====================
@@ -98,6 +120,7 @@ app.listen(PORT, () => {
   ===========================================
   🚀 Servidor corriendo en puerto ${PORT}
   🌍 Ambiente: ${process.env.NODE_ENV || 'development'}
+  🗄️  Base de datos: MySQL (InfinityFree)
   📅 ${new Date().toLocaleString()}
   ===========================================
   `);
