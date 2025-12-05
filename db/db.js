@@ -1,75 +1,112 @@
-// db/db.js - PARA MYSQL (InfinityFree)
+// db/db.js - CONEXIÓN INFINITYFREE CON TU BD REAL
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-console.log("🔧 Iniciando conexión a MySQL...");
-console.log("Host:", process.env.DB_HOST || 'No configurado');
+console.log("====================================");
+console.log("🔧 CONEXIÓN A INFINITYFREE MYSQL");
+console.log("====================================");
+console.log("🏷️  Host: sql213.infinityfree.com");
+console.log("👤 Usuario: if0_40591285");
+console.log("🗄️  Base de datos: if0_40591285_consultorio_medico");
+console.log("====================================");
 
-const pool = mysql.createPool({
-  host: process.env.DB_HOST || 'sql213.infinityfree.com',
-  user: process.env.DB_USER || 'if0_40591285',
-  password: process.env.DB_PASSWORD || 'E7RgqdLL7MYLl',
-  database: process.env.DB_NAME || 'if0_40591285_citasmedicas',
-  port: process.env.DB_PORT || 3306,
+// CONFIGURACIÓN EXACTA PARA TU BD EN INFINITYFREE
+const config = {
+  host: 'sql213.infinityfree.com',
+  user: 'if0_40591285',
+  password: 'E7RgqdLL7MYLl',
+  database: 'if0_40591285_consultorio_medico', // ← ¡TU BD REAL!
+  port: 3306,
+  
+  // Configuraciones óptimas para InfinityFree
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
+  connectTimeout: 20000, // 20 segundos para conexiones lentas
+  acquireTimeout: 20000,
+  
+  // Configuración específica para evitar timeout
   enableKeepAlive: true,
-  keepAliveInitialDelay: 0
-});
+  keepAliveInitialDelay: 10000,
+  
+  // Configurar zona horaria si es necesario
+  timezone: 'Z'
+};
 
-// Probar conexión
+const pool = mysql.createPool(config);
+
+// FUNCIÓN MEJORADA PARA PROBAR CONEXIÓN
 const testConnection = async () => {
+  let connection;
   try {
-    const connection = await pool.getConnection();
-    console.log("✅ Conectado a MySQL InfinityFree");
-    console.log(`📊 Base de datos: ${process.env.DB_NAME || 'if0_40591285_citasmedicas'}`);
-    connection.release();
+    console.log("\n🔄 Intentando conexión a InfinityFree...");
     
-    // Verificar tablas existentes
-    const [tables] = await pool.query('SHOW TABLES');
-    console.log(`📋 Tablas existentes: ${tables.length}`);
+    // Obtener conexión del pool
+    connection = await pool.getConnection();
+    console.log("✅ ¡CONEXIÓN ESTABLECIDA EXITOSAMENTE!");
+    console.log(`📊 Base de datos conectada: if0_40591285_consultorio_medico`);
+    
+    // Probar consulta básica
+    const [result] = await connection.query('SELECT 1 + 1 AS suma, NOW() AS fecha_servidor');
+    console.log(`🧮 Prueba de cálculo: 1 + 1 = ${result[0].suma}`);
+    console.log(`📅 Fecha/hora del servidor MySQL: ${result[0].fecha_servidor}`);
+    
+    // Verificar tablas existentes en TU base de datos
+    const [tables] = await connection.query(`
+      SELECT TABLE_NAME, TABLE_ROWS 
+      FROM INFORMATION_SCHEMA.TABLES 
+      WHERE TABLE_SCHEMA = 'if0_40591285_consultorio_medico'
+    `);
+    
+    console.log(`\n📋 TABLAS EN TU BASE DE DATOS (${tables.length}):`);
+    if (tables.length === 0) {
+      console.log("⚠️  No hay tablas. Necesitas crear la estructura.");
+      console.log("💡 Ejecuta el script SQL en phpMyAdmin para crear tablas.");
+    } else {
+      tables.forEach(table => {
+        console.log(`   • ${table.TABLE_NAME} (${table.TABLE_ROWS || 0} registros)`);
+      });
+    }
+    
+    connection.release();
+    console.log("\n🎉 ¡Base de datos lista para usar!");
     
   } catch (err) {
-    console.error("❌ Error al conectar a MySQL:", err.message);
-    console.error("Código de error:", err.code);
-    console.error("Detalles:", err);
+    console.error("\n❌ ERROR DE CONEXIÓN:");
+    console.error("Código:", err.code);
+    console.error("Mensaje:", err.message);
+    console.error("Número error:", err.errno);
     
-    // Intentar crear la base de datos si no existe
     if (err.code === 'ER_BAD_DB_ERROR') {
-      console.log("⚠️  La base de datos no existe. Creando...");
-      await createDatabase();
+      console.error("\n⚠️  LA BASE DE DATOS NO EXISTE:");
+      console.error("Asegúrate de que el nombre sea exacto:");
+      console.error("if0_40591285_consultorio_medico");
+      console.error("\n💡 Ve a phpMyAdmin y verifica que exista.");
+    }
+    
+    if (err.code === 'ENOTFOUND') {
+      console.error("\n🌐 ERROR DE DNS/RED:");
+      console.error("1. Verifica tu conexión a internet");
+      console.error("2. El host 'sql213.infinityfree.com' debe ser accesible");
+      console.error("3. Prueba hacer ping: ping sql213.infinityfree.com");
+    }
+    
+    if (err.code === 'ER_ACCESS_DENIED_ERROR') {
+      console.error("\n🔐 ERROR DE CREDENCIALES:");
+      console.error("Usuario o contraseña incorrectos");
+      console.error("Usuario: if0_40591285");
+    }
+    
+    if (connection) {
+      connection.release();
     }
   }
 };
 
-// Función para crear la base de datos si no existe
-const createDatabase = async () => {
-  try {
-    const tempPool = mysql.createPool({
-      host: process.env.DB_HOST || 'sql213.infinityfree.com',
-      user: process.env.DB_USER || 'if0_40591285',
-      password: process.env.DB_PASSWORD || 'E7RgqdLL7MYLl',
-      port: process.env.DB_PORT || 3306
-    });
-    
-    const dbName = process.env.DB_NAME || 'if0_40591285_citasmedicas';
-    await tempPool.query(`CREATE DATABASE IF NOT EXISTS ${dbName}`);
-    console.log(`✅ Base de datos '${dbName}' creada exitosamente`);
-    
-    await tempPool.end();
-    
-    // Ahora intentar conectar de nuevo
-    await testConnection();
-    
-  } catch (createErr) {
-    console.error("❌ Error al crear la base de datos:", createErr.message);
-  }
-};
-
-// Ejecutar prueba de conexión al iniciar
+// Ejecutar prueba al iniciar
 testConnection();
 
+// Exportar el pool de conexiones
 export default pool;
